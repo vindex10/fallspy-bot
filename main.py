@@ -32,7 +32,7 @@ def init(bot, update):
                            ,"locations": defaultlocations
                            ,"thespy": ""
                            ,"theloc": ""}})
-    bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me a message with only text '{}' for authentication.".format(grhash))
+    bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with only text '{}' for authentication.".format(grhash))
 
 def default(bot, update):
     grhash = update.message.text
