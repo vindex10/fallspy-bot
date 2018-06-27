@@ -1,4 +1,5 @@
 import json
+import os
 from random import choice
 from string import ascii_letters
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
@@ -10,7 +11,12 @@ class SpyfallBot:
         self.hashes = dict()
 
 
-        config = json.load(open(config, "r"))
+        try:
+            config = json.load(open(config, "r"))
+        except FileNotFoundError:
+            config = dict()
+            config.update({"apikey": os.environ["BOT_TOKEN"]})
+
         self.listener = Updater(config["apikey"])
 
         self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init\
