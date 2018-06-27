@@ -13,7 +13,8 @@ class SpyfallBot:
         config = json.load(open(config, "r"))
         self.listener = Updater(config["apikey"])
 
-        self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init))
+        self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init\
+                                                           ,pass_job_queue=True))
         self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
         self.listener.dispatcher.add_handler(CommandHandler('setlocs', self.cmd_setlocs
                                             ,pass_args=True))
@@ -25,8 +26,10 @@ class SpyfallBot:
     def run(self):
         self.listener.start_polling()
 
-    def cmd_init(self, bot, update):
-        chat_id = update.message.chat_id
+    def cmd_init(self, bot, update, job_queue):
+        self.cmd_deinit(bot, update, quiet=True)
+
+        group = update.message.chat_id
         defaultlocations = ["Kitchen at the Ship"
                            ,"Basement of the White House"
                            ,"Stucked elevator at the Trump Tower"
@@ -35,13 +38,18 @@ class SpyfallBot:
                            ,"Loaded into the Matrix"]
 
         grhash = self.__genhash__()
-        self.hashes.update({grhash: chat_id})
-        self.state.update({chat_id: {"players": []
-                               ,"locations": defaultlocations
-                               ,"thespy": ""
-                               ,"theloc": ""}})
+        self.hashes.update({grhash: group})
 
-        bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with the only text '{}' for authentication.".format(grhash))
+        job = job_queue.run_once(lambda bot, job: self.cmd_deinit(bot, update), 86400)
+
+        self.state.update({group: {"players": []
+                                  ,"locations": defaultlocations
+                                  ,"thespy": ""
+                                  ,"theloc": ""
+                                  ,"hash": grhash
+                                  ,"timeout": job}})
+        bot.send_message(chat_id=group, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with the only text '{}' for authentication. This session is active for 24h".format(grhash))
+
 
     def cmd_default(self, bot, update):
         grhash = update.message.text
@@ -120,6 +128,19 @@ class SpyfallBot:
         loc = self.state[group]["theloc"]
 
         bot.send_message(chat_id=group, text="Spy: {}\nLocation: {}".format(spyname, loc))
+
+    def cmd_deinit(self, bot, update, quiet=False):
+        group = update.message.chat_id
+        try:
+            self.state[group]["timeout"].schedule_removal()
+            del self.hashes[self.state[group]["hash"]]
+            del self.state[group]
+        except KeyError:
+            if not quiet:
+                bot.send_message(chat_id=group, text="Nothing to /deinit. Initialize first (/init).")
+            return
+        if not quiet:
+            bot.send_message(chat_id=group, text="Session destroyed.")
 
     @staticmethod
     def __genhash__():
