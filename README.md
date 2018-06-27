@@ -14,7 +14,7 @@ Info:
 
 * Call `/playlist` to show recent list of players
 * Call `/loclist` to list locations.
-* To update locations call `/setlocs loc1 loc2 loc3 …`
+* To update locations call `/setlocs loc1 loc2 loc3 …`. Use quotes `"abc def"` if location has spaces.
 
 Deinit:
 
