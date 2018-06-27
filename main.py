@@ -14,11 +14,13 @@ class SpyfallBot:
         self.listener = Updater(config["apikey"])
 
         self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init))
+        self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
+        self.listener.dispatcher.add_handler(CommandHandler('setlocs', self.cmd_setlocs
+                                            ,pass_args=True))
         self.listener.dispatcher.add_handler(CommandHandler('loclist', self.cmd_loclist))
         self.listener.dispatcher.add_handler(CommandHandler('playlist', self.cmd_playlist))
         self.listener.dispatcher.add_handler(CommandHandler('go', self.cmd_go))
         self.listener.dispatcher.add_handler(CommandHandler('show', self.cmd_show))
-        self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
 
     def run(self):
         self.listener.start_polling()
@@ -42,26 +44,25 @@ class SpyfallBot:
         bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with the only text '{}' for authentication.".format(grhash))
 
     def cmd_default(self, bot, update):
-        data = update.message.text.split("\n")
-        if data[0] == "#locations":
-            group = update.message.chat_id
-            try:
-                self.state[group]["locations"] = data[1:]
-                bot.send_message(chat_id=group, text="New locations:")
-                self.cmd_loclist(bot, update)
-            except KeyError:
-                bot.send_message(chat_id=group, text="Call /init to initialize")
-                return
-        else:
-            grhash = update.message.text
-            uid = update.message.chat_id
-            try:
-                username = self.__get_uname__(bot, self.hashes[grhash], uid)
-            except (TelegramError, KeyError):
-                bot.send_message(chat_id=update.message.chat_id, text="You are not a member of the corresponding group.")
-                return
-            self.state[self.hashes[grhash]]["players"].append(uid)
-            bot.send_message(chat_id=self.hashes[grhash], text="Added {}".format(username))
+        grhash = update.message.text
+        uid = update.message.chat_id
+        try:
+            username = self.__get_uname__(bot, self.hashes[grhash], uid)
+        except (TelegramError, KeyError):
+            bot.send_message(chat_id=update.message.chat_id, text="You are not a member of the corresponding group.")
+            return
+        self.state[self.hashes[grhash]]["players"].append(uid)
+        bot.send_message(chat_id=self.hashes[grhash], text="Added {}".format(username))
+
+    def cmd_setlocs(self, bot, update, args):
+        group = update.message.chat_id
+        try:
+            self.state[group]["locations"] = args
+            bot.send_message(chat_id=group, text="New locations:")
+            self.cmd_loclist(bot, update)
+        except KeyError:
+            bot.send_message(chat_id=group, text="Call /init to initialize")
+            return
 
     def cmd_loclist(self, bot, update):
         chat_id = update.message.chat_id
@@ -112,7 +113,10 @@ class SpyfallBot:
             bot.send_message(chat_id=update.message.chat_id, text="Call /init before start")
             return
         
-        spyname = self.__get_uname__(bot, group, self.state[group]["thespy"])
+        try:
+            spyname = self.__get_uname__(bot, group, self.state[group]["thespy"])
+        except TelegramError:
+            spyname = ""
         loc = self.state[group]["theloc"]
 
         bot.send_message(chat_id=group, text="Spy: {}\nLocation: {}".format(spyname, loc))
