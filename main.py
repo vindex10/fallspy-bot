@@ -1,100 +1,117 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-import telegram
-from random import choice
 import json
+from random import choice
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import TelegramError
 
-def loclist(bot, update):
-    chat_id = update.message.chat_id
-    try:
-        bot.send_message(chat_id=chat_id, text="\n".join(state[chat_id]["locations"]))
-    except KeyError:
-        bot.send_message(chat_id=chat_id, text="Call /init to start")
+class SpyfallBot:
+    def __init__(self, config="config.cfg"):
+        self.state = dict()
+        self.hashes = dict()
 
-def playlist(bot, update):
-    chat_id = update.message.chat_id
-    try:
-        playernames = [bot.get_chat_member(chat_id, player).user.name\
-                            for player in state[chat_id]["players"]]
-    except KeyError:
-        bot.send_message(chat_id=chat_id, text="Call /init first")
-        return
-    except telegram.TelegramError:
-        bot.send_message(chat_id=chat_id, text="Outdated player list")
-        return
 
-    bot.send_message(chat_id=chat_id, text="\n".join(playernames))
+        config = json.load(open(config, "r"))
+        self.listener = Updater(config["apikey"])
 
-def init(bot, update):
-    chat_id = update.message.chat_id
-    grhash = genhash()
-    hashes.update({grhash: chat_id})
-    state.update({chat_id: {"players": []
-                           ,"locations": defaultlocations
-                           ,"thespy": ""
-                           ,"theloc": ""}})
-    bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with only text '{}' for authentication.".format(grhash))
+        self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init))
+        self.listener.dispatcher.add_handler(CommandHandler('loclist', self.cmd_loclist))
+        self.listener.dispatcher.add_handler(CommandHandler('playlist', self.cmd_playlist))
+        self.listener.dispatcher.add_handler(CommandHandler('go', self.cmd_go))
+        self.listener.dispatcher.add_handler(CommandHandler('show', self.cmd_show))
+        self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
 
-def default(bot, update):
-    grhash = update.message.text
-    if grhash in hashes.keys():
+    def run(self):
+        self.listener.start_polling()
+
+    def cmd_init(self, bot, update):
+        chat_id = update.message.chat_id
+        defaultlocations = ["Kitchen at the Ship"
+                           ,"Basement of the White House"
+                           ,"Stucked elevator at the Trump Tower"
+                           ,"Labirinth with Minotaur"
+                           ,"Rabbithole to the Wonderland"
+                           ,"Loaded into the Matrix"]
+
+        grhash = self.__genhash__()
+        self.hashes.update({grhash: chat_id})
+        self.state.update({chat_id: {"players": []
+                               ,"locations": defaultlocations
+                               ,"thespy": ""
+                               ,"theloc": ""}})
+
+        bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with the only text '{}' for authentication.".format(grhash))
+
+    def cmd_default(self, bot, update):
+        grhash = update.message.text
         uid = update.message.chat_id
         try:
-            user = bot.get_chat_member(hashes[grhash], uid).user
-        except telegram.TelegramError:
-            bot.send_message(chat_id=update.message.chat_id, text="Error")
+            username = self.__get_uname__(bot, self.hashes[grhash], uid)
+        except (TelegramError, KeyError):
+            bot.send_message(chat_id=update.message.chat_id, text="You are not a member of the corresponding group.")
             return
-        state[hashes[grhash]]["players"].append(uid)
-        bot.send_message(chat_id=hashes[grhash], text="Added {}".format(user.name))
+        self.state[self.hashes[grhash]]["players"].append(uid)
+        bot.send_message(chat_id=self.hashes[grhash], text="Added {}".format(username))
 
-def go(bot, update):
-    group = update.message.chat_id
+    def cmd_loclist(self, bot, update):
+        chat_id = update.message.chat_id
+        try:
+            bot.send_message(chat_id=chat_id, text="\n".join(self.state[chat_id]["locations"]))
+        except KeyError:
+            bot.send_message(chat_id=chat_id, text="Call /init to start.")
 
-    try:
-        data = state[group]
-    except KeyError:
-        bot.send_message(chat_id=group, text="Call /init before start")
-        return
+    def cmd_playlist(self, bot, update):
+        chat_id = update.message.chat_id
+        try:
+            playernames = [self.__get_uname__(bot, chat_id, player)\
+                                for player in self.state[chat_id]["players"]]
+        except KeyError:
+            bot.send_message(chat_id=chat_id, text="Call /init first")
+            return
+        except TelegramError:
+            bot.send_message(chat_id=chat_id, text="Outdated player list. Call /init to re-init.")
+            return
 
-    thespy = choice(data["players"])
-    theloc = choice(data["locations"])
-    data["theloc"] = theloc
-    data["thespy"] = thespy
+        bot.send_message(chat_id=chat_id, text="\n".join(playernames))
 
-    for player in data["players"]:
-        if player == thespy:
-            bot.send_message(chat_id=player, text="You are the SPY")
-        else:
-            bot.send_message(chat_id=player, text="Location: {}".format(theloc))
+    def cmd_go(self, bot, update):
+        group = update.message.chat_id
 
-def show(bot, update):
-    group = update.message.chat_id
-    try:
-        data = state[group]
-    except KeyError:
-        bot.send_message(chat_id=update.message.chat_id, text="Call /init before start")
-        return
-    
-    try:
-        spyname = bot.get_chat_member(group, state[group]["thespy"]).user.name
-    except:
-        spyname = ""
+        try:
+            data = self.state[group]
+        except KeyError:
+            bot.send_message(chat_id=group, text="Call /init before start")
+            return
 
-    bot.send_message(chat_id=update.message.chat_id, text="Spy: {}\nLocation: {}".format(spyname, state[group]["theloc"]))
+        thespy = choice(data["players"])
+        theloc = choice(data["locations"])
+        data["theloc"] = theloc
+        data["thespy"] = thespy
 
-def genhash():
-    return "".join([choice(["a", "b", "c"]) for i in range(10)])
+        for player in data["players"]:
+            if player == thespy:
+                bot.send_message(chat_id=player, text="You are the SPY")
+            else:
+                bot.send_message(chat_id=player, text="Location: {}".format(theloc))
 
-state = dict()
-hashes = dict()
-defaultlocations=["a", "b", "c"]
+    def cmd_show(self, bot, update):
+        group = update.message.chat_id
+        try:
+            data = self.state[group]
+        except KeyError:
+            bot.send_message(chat_id=update.message.chat_id, text="Call /init before start")
+            return
+        
+        spyname = self.__get_uname__(bot, group, self.state[group]["thespy"])
+        loc = self.state[group]["theloc"]
 
-config = json.load(open("config.cfg", "r"))
+        bot.send_message(chat_id=group, text="Spy: {}\nLocation: {}".format(spyname, loc))
 
-bot = Updater(config["apikey"])
-bot.dispatcher.add_handler(CommandHandler('init', init))
-bot.dispatcher.add_handler(CommandHandler('loclist', loclist))
-bot.dispatcher.add_handler(CommandHandler('playlist', playlist))
-bot.dispatcher.add_handler(CommandHandler('go', go))
-bot.dispatcher.add_handler(CommandHandler('show', show))
-bot.dispatcher.add_handler(MessageHandler(Filters.text, default))
-bot.start_polling()
+    @staticmethod
+    def __genhash__():
+        return "".join([choice(["a", "b", "c"]) for i in range(10)])
+
+    def __get_uname__(self, bot, gid, uid):
+        return bot.get_chat_member(gid, uid).user.name
+
+if __name__ == "__main__":
+    bot = SpyfallBot()
+    bot.run()
