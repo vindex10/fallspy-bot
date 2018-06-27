@@ -16,6 +16,9 @@ class SpyfallBot:
         except FileNotFoundError:
             config = dict()
             config.update({"apikey": os.environ["BOT_TOKEN"]})
+        
+        with open("README.md", "r") as f:
+            self.help_msg = f.read()
 
         self.listener = Updater(config["apikey"])
 
@@ -36,8 +39,7 @@ class SpyfallBot:
 
     def cmd_start(self, bot, update):
         group = update.message.chat_id
-        with open("README.md", "r") as f:
-            bot.send_message(chat_id=group, text=f.read())
+        bot.send_message(chat_id=group, text=self.help_msg)
 
     def cmd_init(self, bot, update, job_queue):
         self.cmd_deinit(bot, update, quiet=True)
