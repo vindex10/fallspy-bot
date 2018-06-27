@@ -28,6 +28,7 @@ class SpyfallBot:
         self.listener.dispatcher.add_handler(CommandHandler('playlist', self.cmd_playlist))
         self.listener.dispatcher.add_handler(CommandHandler('go', self.cmd_go))
         self.listener.dispatcher.add_handler(CommandHandler('show', self.cmd_show))
+        self.listener.dispatcher.add_handler(CommandHandler('deinit', self.cmd_deinit))
 
     def run(self):
         self.listener.start_polling()
