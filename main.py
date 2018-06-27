@@ -19,6 +19,7 @@ class SpyfallBot:
 
         self.listener = Updater(config["apikey"])
 
+        self.listener.dispatcher.add_handler(CommandHandler('start', self.cmd_start))
         self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init\
                                                            ,pass_job_queue=True))
         self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
@@ -32,6 +33,11 @@ class SpyfallBot:
 
     def run(self):
         self.listener.start_polling()
+
+    def cmd_start(self, bot, update):
+        group = update.message.chat_id
+        with open("README.md", "r") as f:
+            bot.send_message(chat_id=group, text=f.read())
 
     def cmd_init(self, bot, update, job_queue):
         self.cmd_deinit(bot, update, quiet=True)
