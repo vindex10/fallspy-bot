@@ -1,5 +1,6 @@
 import json
 from random import choice
+from string import ascii_letters
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import TelegramError
 
@@ -41,15 +42,26 @@ class SpyfallBot:
         bot.send_message(chat_id=chat_id, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with the only text '{}' for authentication.".format(grhash))
 
     def cmd_default(self, bot, update):
-        grhash = update.message.text
-        uid = update.message.chat_id
-        try:
-            username = self.__get_uname__(bot, self.hashes[grhash], uid)
-        except (TelegramError, KeyError):
-            bot.send_message(chat_id=update.message.chat_id, text="You are not a member of the corresponding group.")
-            return
-        self.state[self.hashes[grhash]]["players"].append(uid)
-        bot.send_message(chat_id=self.hashes[grhash], text="Added {}".format(username))
+        data = update.message.text.split("\n")
+        if data[0] == "#locations":
+            group = update.message.chat_id
+            try:
+                self.state[group]["locations"] = data[1:]
+                bot.send_message(chat_id=group, text="New locations:")
+                self.cmd_loclist(bot, update)
+            except KeyError:
+                bot.send_message(chat_id=group, text="Call /init to initialize")
+                return
+        else:
+            grhash = update.message.text
+            uid = update.message.chat_id
+            try:
+                username = self.__get_uname__(bot, self.hashes[grhash], uid)
+            except (TelegramError, KeyError):
+                bot.send_message(chat_id=update.message.chat_id, text="You are not a member of the corresponding group.")
+                return
+            self.state[self.hashes[grhash]]["players"].append(uid)
+            bot.send_message(chat_id=self.hashes[grhash], text="Added {}".format(username))
 
     def cmd_loclist(self, bot, update):
         chat_id = update.message.chat_id
@@ -107,7 +119,7 @@ class SpyfallBot:
 
     @staticmethod
     def __genhash__():
-        return "".join([choice(["a", "b", "c"]) for i in range(10)])
+        return "".join([choice(ascii_letters) for i in range(10)])
 
     def __get_uname__(self, bot, gid, uid):
         return bot.get_chat_member(gid, uid).user.name
