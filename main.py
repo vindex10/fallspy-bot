@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from random import choice
 from string import ascii_letters
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
@@ -80,7 +81,10 @@ class SpyfallBot:
     def cmd_setlocs(self, bot, update, args):
         group = update.message.chat_id
         try:
-            self.state[group]["locations"] = args
+            argstr = " ".join(args)
+            arglist = [re.sub('"([^"]+)"',"\\1",s.group(0)) for s in
+                        re.finditer('("[^"]+"|[^"\s]+)', argstr)]
+            self.state[group]["locations"] = arglist
             bot.send_message(chat_id=group, text="New locations:")
             self.cmd_loclist(bot, update)
         except KeyError:
