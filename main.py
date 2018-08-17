@@ -50,7 +50,7 @@ class SpyfallBot:
         group = update.message.chat_id
         defaultlocations = ["Kitchen at the Ship"
                            ,"Basement of the White House"
-                           ,"Stucked elevator at the Trump Tower"
+                           ,"Stuck elevator at the Trump Tower"
                            ,"Labirinth with Minotaur"
                            ,"Rabbithole to the Wonderland"
                            ,"Loaded into the Matrix"]
