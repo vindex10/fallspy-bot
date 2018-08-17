@@ -64,7 +64,8 @@ class SpyfallBot:
                                   ,"theloc": ""
                                   ,"hash": grhash
                                   ,"timeout": job}})
-        bot.send_message(chat_id=group, text="Hi! Everyone, please send me (@fallspy_bot) a PRIVATE message with the only text '{}' for authentication. This session is active for 24h".format(grhash))
+        bot.send_message(chat_id=group, text="Hi! Everyone, please forward me (@fallspy_bot) the next message to Private Chat for authentication . This session is active for 24h")
+        bot.send_message(chat_id=group, text=grhash)
 
 
     def cmd_default(self, bot, update):
