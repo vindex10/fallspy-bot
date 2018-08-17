@@ -29,6 +29,8 @@ class SpyfallBot:
         self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
         self.listener.dispatcher.add_handler(CommandHandler('setlocs', self.cmd_setlocs
                                             ,pass_args=True))
+        self.listener.dispatcher.add_handler(CommandHandler('addlocs', self.cmd_addlocs
+                                            ,pass_args=True))
         self.listener.dispatcher.add_handler(CommandHandler('loclist', self.cmd_loclist))
         self.listener.dispatcher.add_handler(CommandHandler('playlist', self.cmd_playlist))
         self.listener.dispatcher.add_handler(CommandHandler('go', self.cmd_go))
@@ -88,6 +90,17 @@ class SpyfallBot:
             self.state[group]["locations"] = arglist
             bot.send_message(chat_id=group, text="New locations:")
             self.cmd_loclist(bot, update)
+        except KeyError:
+            bot.send_message(chat_id=group, text="Call /init to initialize")
+            return
+
+    def cmd_addlocs(self, bot, update, args):
+        group = update.message.chat_id
+        try:
+            argstr = " ".join(args)
+            arglist = [re.sub('"([^"]+)"',"\\1",s.group(0)) for s in
+                        re.finditer('("[^"]+"|[^"\s]+)', argstr)]
+            self.state[group]["locations"] += arglist
         except KeyError:
             bot.send_message(chat_id=group, text="Call /init to initialize")
             return
