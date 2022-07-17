@@ -3,136 +3,138 @@ import os
 import re
 from random import choice
 from string import ascii_letters
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from telegram import TelegramError
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from telegram.error import TelegramError
+
 
 class SpyfallBot:
     def __init__(self, config="config.cfg"):
-        self.state = dict()
-        self.hashes = dict()
-
+        self.state = {}
+        self.hashes = {}
 
         try:
-            config = json.load(open(config, "r"))
+            with open(config, "r", encoding="utf-8") as fin:
+                config = json.load(fin)
         except FileNotFoundError:
-            config = dict()
+            config = {}
             config.update({"apikey": os.environ["BOT_TOKEN"]})
-        
-        with open("README.md", "r") as f:
+
+        with open("README.md", "r", encoding="utf-8") as f:
             self.help_msg = f.read()
 
-        self.listener = Updater(config["apikey"])
+        self.app = ApplicationBuilder().token(config["apikey"]).build()
 
-        self.listener.dispatcher.add_handler(CommandHandler('start', self.cmd_start))
-        self.listener.dispatcher.add_handler(CommandHandler('init', self.cmd_init\
-                                                           ,pass_job_queue=True))
-        self.listener.dispatcher.add_handler(MessageHandler(Filters.text, self.cmd_default))
-        self.listener.dispatcher.add_handler(CommandHandler('setlocs', self.cmd_setlocs
-                                            ,pass_args=True))
-        self.listener.dispatcher.add_handler(CommandHandler('addlocs', self.cmd_addlocs
-                                            ,pass_args=True))
-        self.listener.dispatcher.add_handler(CommandHandler('loclist', self.cmd_loclist))
-        self.listener.dispatcher.add_handler(CommandHandler('playlist', self.cmd_playlist))
-        self.listener.dispatcher.add_handler(CommandHandler('go', self.cmd_go))
-        self.listener.dispatcher.add_handler(CommandHandler('show', self.cmd_show))
-        self.listener.dispatcher.add_handler(CommandHandler('deinit', self.cmd_deinit))
+        self.app.add_handler(CommandHandler('start', self.cmd_start))
+        self.app.add_handler(CommandHandler('init', self.cmd_init))
+        self.app.add_handler(MessageHandler(filters.TEXT & (~ filters.COMMAND), self.cmd_default))
+        self.app.add_handler(CommandHandler('setlocs', self.cmd_setlocs))
+        self.app.add_handler(CommandHandler('addlocs', self.cmd_addlocs))
+        self.app.add_handler(CommandHandler('loclist', self.cmd_loclist))
+        self.app.add_handler(CommandHandler('playlist', self.cmd_playlist))
+        self.app.add_handler(CommandHandler('go', self.cmd_go))
+        self.app.add_handler(CommandHandler('show', self.cmd_show))
+        self.app.add_handler(CommandHandler('deinit', self.cmd_deinit))
 
     def run(self):
-        self.listener.start_polling()
+        self.app.run_polling()
 
-    def cmd_start(self, bot, update):
+    async def cmd_start(self, update, context):
         group = update.message.chat_id
-        bot.send_message(chat_id=group, text=self.help_msg)
+        await context.bot.send_message(chat_id=group, text=self.help_msg)
 
-    def cmd_init(self, bot, update, job_queue):
-        self.cmd_deinit(bot, update, quiet=True)
+    async def cmd_init(self, update, context):
+        await self.cmd_deinit(update, context, quiet=True)
 
         group = update.message.chat_id
-        defaultlocations = ["Kitchen at the Ship"
-                           ,"Basement of the White House"
-                           ,"Stuck elevator at the Trump Tower"
-                           ,"Labirinth with Minotaur"
-                           ,"Rabbithole to the Wonderland"
-                           ,"Loaded into the Matrix"]
+        defaultlocations = ["Kitchen at the Ship",
+                            "Basement of the White House",
+                            "Stuck elevator at the Trump Tower",
+                            "Labirinth with Minotaur",
+                            "Rabbithole to the Wonderland",
+                            "Loaded into the Matrix"]
 
         grhash = self.__genhash__()
         self.hashes.update({grhash: group})
 
-        job = job_queue.run_once(lambda bot, job: self.cmd_deinit(bot, update), 86400)
+        job = context.job_queue.run_once(self._deinit_job_callback,
+                                         86400,
+                                         data={"group": group,
+                                               "quiet": False})
 
-        self.state.update({group: {"players": []
-                                  ,"locations": defaultlocations
-                                  ,"thespy": ""
-                                  ,"theloc": ""
-                                  ,"hash": grhash
-                                  ,"timeout": job}})
-        bot.send_message(chat_id=group, text="Hi! Everyone, please forward me (@fallspy_bot) the next message to Private Chat for authentication . This session is active for 24h")
-        bot.send_message(chat_id=group, text=grhash)
+        self.state.update({group: {"players": [],
+                                   "locations": defaultlocations,
+                                   "thespy": "",
+                                   "theloc": "",
+                                   "hash": grhash,
+                                   "timeout": job}})
+        await context.bot.send_message(chat_id=group,
+                                       text="Hi! Everyone, please forward me (@fallspy_bot) the next message "
+                                            "to Private Chat for authentication . This session is active for 24h")
+        await context.bot.send_message(chat_id=group, text=grhash)
 
-
-    def cmd_default(self, bot, update):
+    async def cmd_default(self, update, context):
         grhash = update.message.text
         uid = update.message.chat_id
         try:
-            username = self.__get_uname__(bot, self.hashes[grhash], uid)
+            username = await self.__get_uname__(context, self.hashes[grhash], uid)
         except (TelegramError, KeyError):
-            bot.send_message(chat_id=update.message.chat_id, text="You are not a member of the corresponding group.")
+            await context.bot.send_message(chat_id=update.message.chat_id,
+                                           text="You are not a member of the corresponding group.")
             return
         self.state[self.hashes[grhash]]["players"].append(uid)
-        bot.send_message(chat_id=self.hashes[grhash], text="Added {}".format(username))
+        await context.bot.send_message(chat_id=self.hashes[grhash], text=f"Added {username}")
 
-    def cmd_setlocs(self, bot, update, args):
+    async def cmd_setlocs(self, update, context):
         group = update.message.chat_id
         try:
-            argstr = " ".join(args)
-            arglist = [re.sub('"([^"]+)"',"\\1",s.group(0)) for s in
-                        re.finditer('("[^"]+"|[^"\s]+)', argstr)]
+            argstr = " ".join(context.args)
+            arglist = [re.sub('"([^"]+)"', "\\1",
+                       s.group(0)) for s in re.finditer(r'("[^"]+"|[^"\s]+)', argstr)]
             self.state[group]["locations"] = arglist
-            bot.send_message(chat_id=group, text="New locations:")
-            self.cmd_loclist(bot, update)
+            await context.bot.send_message(chat_id=group, text="New locations:")
+            await self.cmd_loclist(update, context)
         except KeyError:
-            bot.send_message(chat_id=group, text="Call /init to initialize")
+            await context.bot.send_message(chat_id=group, text="Call /init to initialize")
             return
 
-    def cmd_addlocs(self, bot, update, args):
+    async def cmd_addlocs(self, update, context):
         group = update.message.chat_id
         try:
-            argstr = " ".join(args)
-            arglist = [re.sub('"([^"]+)"',"\\1",s.group(0)) for s in
-                        re.finditer('("[^"]+"|[^"\s]+)', argstr)]
+            argstr = " ".join(context.args)
+            arglist = [re.sub('"([^"]+)"', "\\1",
+                       s.group(0)) for s in re.finditer(r'("[^"]+"|[^"\s]+)', argstr)]
             self.state[group]["locations"] += arglist
         except KeyError:
-            bot.send_message(chat_id=group, text="Call /init to initialize")
-            return
+            await context.bot.send_message(chat_id=group, text="Call /init to initialize")
 
-    def cmd_loclist(self, bot, update):
+    async def cmd_loclist(self, update, context):
         chat_id = update.message.chat_id
         try:
-            bot.send_message(chat_id=chat_id, text="\n".join(self.state[chat_id]["locations"]))
+            await context.bot.send_message(chat_id=chat_id, text="\n".join(self.state[chat_id]["locations"]))
         except KeyError:
-            bot.send_message(chat_id=chat_id, text="Call /init to start.")
+            await context.bot.send_message(chat_id=chat_id, text="Call /init to start.")
 
-    def cmd_playlist(self, bot, update):
+    async def cmd_playlist(self, update, context):
         chat_id = update.message.chat_id
         try:
-            playernames = [self.__get_uname__(bot, chat_id, player)\
-                                for player in self.state[chat_id]["players"]]
+            playernames = [await self.__get_uname__(context, chat_id, player)
+                           for player in self.state[chat_id]["players"]]
         except KeyError:
-            bot.send_message(chat_id=chat_id, text="Call /init first")
+            await context.bot.send_message(chat_id=chat_id, text="Call /init first")
             return
         except TelegramError:
-            bot.send_message(chat_id=chat_id, text="Outdated player list. Call /init to re-init.")
+            await context.bot.send_message(chat_id=chat_id, text="Outdated player list. Call /init to re-init.")
             return
 
-        bot.send_message(chat_id=chat_id, text="\n".join(playernames))
+        await context.bot.send_message(chat_id=chat_id, text="\n".join(playernames))
 
-    def cmd_go(self, bot, update):
+    async def cmd_go(self, update, context):
         group = update.message.chat_id
 
         try:
             data = self.state[group]
         except KeyError:
-            bot.send_message(chat_id=group, text="Call /init before start")
+            await context.bot.send_message(chat_id=group, text="Call /init before start")
             return
 
         thespy = choice(data["players"])
@@ -142,46 +144,54 @@ class SpyfallBot:
 
         for player in data["players"]:
             if player == thespy:
-                bot.send_message(chat_id=player, text="You are the SPY")
+                await context.bot.send_message(chat_id=player, text="You are the SPY")
             else:
-                bot.send_message(chat_id=player, text="Location: {}".format(theloc))
+                await context.bot.send_message(chat_id=player, text=f"Location: {theloc}")
 
-    def cmd_show(self, bot, update):
+    async def cmd_show(self, update, context):
         group = update.message.chat_id
         try:
             data = self.state[group]
         except KeyError:
-            bot.send_message(chat_id=update.message.chat_id, text="Call /init before start")
+            await context.bot.send_message(chat_id=update.message.chat_id, text="Call /init before start")
             return
-        
+
         try:
-            spyname = self.__get_uname__(bot, group, self.state[group]["thespy"])
+            spyname = await self.__get_uname__(context, group, data["thespy"])
         except TelegramError:
             spyname = ""
-        loc = self.state[group]["theloc"]
+        loc = data["theloc"]
 
-        bot.send_message(chat_id=group, text="Spy: {}\nLocation: {}".format(spyname, loc))
+        await context.bot.send_message(chat_id=group, text=f"Spy: {spyname}\nLocation: {loc}")
 
-    def cmd_deinit(self, bot, update, quiet=False):
+    async def cmd_deinit(self, update, context, quiet=False):
         group = update.message.chat_id
+        await self._deinit_group(group, context, quiet=quiet)
+
+    async def _deinit_job_callback(self, context):
+        await self._deinit_group(context.job.data["group"], context, context.job.data["quiet"])
+
+    async def _deinit_group(self, group, context, quiet):
         try:
-            self.state[group]["timeout"].schedule_removal()
+            timeout_job = self.state[group]["timeout"]
+            timeout_job.schedule_removal()
             del self.hashes[self.state[group]["hash"]]
             del self.state[group]
         except KeyError:
             if not quiet:
-                bot.send_message(chat_id=group, text="Nothing to /deinit. Initialize first (/init).")
+                await context.bot.send_message(chat_id=group, text="Nothing to /deinit. Initialize first (/init).")
             return
         if not quiet:
-            bot.send_message(chat_id=group, text="Session destroyed.")
+            await context.bot.send_message(chat_id=group, text="Session destroyed.")
 
     @staticmethod
     def __genhash__():
         return "".join([choice(ascii_letters) for i in range(10)])
 
-    def __get_uname__(self, bot, gid, uid):
-        return bot.get_chat_member(gid, uid).user.name
+    async def __get_uname__(self, context, gid, uid):
+        return (await context.bot.get_chat_member(gid, uid)).user.name
+
 
 if __name__ == "__main__":
-    bot = SpyfallBot()
-    bot.run()
+    _bot = SpyfallBot()
+    _bot.run()
