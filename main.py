@@ -5,24 +5,21 @@ from random import choice
 from string import ascii_letters
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from telegram.error import TelegramError
+from config import CFG
+
+
+MAIN_DIR = os.path.realpath(os.path.dirname(__file__))
 
 
 class SpyfallBot:
-    def __init__(self, config="config.cfg"):
+    def __init__(self):
         self.state = {}
         self.hashes = {}
 
-        try:
-            with open(config, "r", encoding="utf-8") as fin:
-                config = json.load(fin)
-        except FileNotFoundError:
-            config = {}
-            config.update({"apikey": os.environ["BOT_TOKEN"]})
-
-        with open("README.md", "r", encoding="utf-8") as f:
+        with open(os.path.join(MAIN_DIR, "README.md"), "r", encoding="utf-8") as f:
             self.help_msg = f.read()
 
-        self.app = ApplicationBuilder().token(config["apikey"]).build()
+        self.app = ApplicationBuilder().token(CFG.bot_token).build()
 
         self.app.add_handler(CommandHandler('start', self.cmd_start))
         self.app.add_handler(CommandHandler('init', self.cmd_init))
